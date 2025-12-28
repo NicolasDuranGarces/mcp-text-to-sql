@@ -7,7 +7,7 @@ and adapter factory pattern.
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import structlog
 
@@ -21,13 +21,9 @@ from src.domain.entities.datasource import (
 from src.domain.entities.query import QueryMode
 from src.domain.ports.datasource_port import DatasourcePort
 
-from src.infrastructure.adapters.sql import (
-    PostgreSQLAdapter,
-    MySQLAdapter,
-    SQLiteAdapter,
-)
-from src.infrastructure.adapters.nosql import MongoDBAdapter
-from src.infrastructure.adapters.files import CSVAdapter, ExcelAdapter
+# Use TYPE_CHECKING to avoid circular imports
+if TYPE_CHECKING:
+    from src.infrastructure.adapters.factory import AdapterFactory
 
 logger = structlog.get_logger(__name__)
 
@@ -39,11 +35,24 @@ class DatasourceService:
     Provides CRUD operations, connection validation, and adapter creation.
     """
 
-    def __init__(self, config_path: str | None = None) -> None:
+    def __init__(
+        self,
+        config_path: str | None = None,
+        adapter_factory: "AdapterFactory | None" = None,
+    ) -> None:
+        """Initialize service with optional config path and adapter factory.
+        
+        Args:
+            config_path: Path to JSON config file for persistence
+            adapter_factory: Factory for creating adapters (injected for DIP)
+        """
         self._datasources: dict[str, Datasource] = {}
         self._adapters: dict[str, DatasourcePort] = {}
         self._current_mode: QueryMode = QueryMode.MIXED
         self._config_path = Path(config_path) if config_path else None
+        
+        # Lazy load factory if not provided (for backward compatibility)
+        self._adapter_factory = adapter_factory
 
         # Load from config file if provided
         if self._config_path and self._config_path.exists():
@@ -221,26 +230,17 @@ class DatasourceService:
         if not datasource:
             return None
 
-        adapter = self._create_adapter(datasource)
+        # Lazy init factory if not provided (Composition Root fallback)
+        if not self._adapter_factory:
+            from src.infrastructure.adapters.factory import create_default_factory
+            self._adapter_factory = create_default_factory()
+
+        # Use factory to create adapter (DIP compliant)
+        adapter = self._adapter_factory.create(datasource)
         self._adapters[datasource_id] = adapter
         return adapter
 
-    def _create_adapter(self, datasource: Datasource) -> DatasourcePort:
-        """Create the appropriate adapter for a datasource type."""
-        adapter_map: dict[DatasourceType, type[DatasourcePort]] = {
-            DatasourceType.POSTGRESQL: PostgreSQLAdapter,
-            DatasourceType.MYSQL: MySQLAdapter,
-            DatasourceType.SQLITE: SQLiteAdapter,
-            DatasourceType.MONGODB: MongoDBAdapter,
-            DatasourceType.CSV: CSVAdapter,
-            DatasourceType.EXCEL: ExcelAdapter,
-        }
-
-        adapter_class = adapter_map.get(datasource.type)
-        if not adapter_class:
-            raise ValueError(f"No adapter available for type: {datasource.type.value}")
-
-        return adapter_class(datasource)
+    # _create_adapter removed - logic moved to AdapterFactory
 
     async def validate_connection(self, datasource_id: str) -> bool:
         """Validate connection to a datasource."""
