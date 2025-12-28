@@ -4,6 +4,7 @@ MCP Tools Router.
 Defines all MCP tools as FastAPI endpoints.
 """
 
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -99,8 +100,6 @@ async def configure_datasource(request: ConfigureDatasourceRequest) -> ToolRespo
     For security, use connection_string_env to reference an environment variable
     instead of passing the connection string directly.
     """
-    import os
-    
     try:
         service = get_datasource_service()
 
