@@ -28,7 +28,15 @@ class ConfigureDatasourceRequest(BaseModel):
     id: str = Field(..., description="Unique identifier for the datasource")
     name: str = Field(..., description="Human-readable name")
     type: str = Field(..., description="Datasource type (postgresql, mysql, mongodb, csv, etc.)")
-    connection_string: str | None = Field(None, description="Connection string for databases")
+    # Security: prefer connection_string_env over connection_string
+    connection_string_env: str | None = Field(
+        None, 
+        description="Name of environment variable containing connection string (RECOMMENDED for security)"
+    )
+    connection_string: str | None = Field(
+        None, 
+        description="Direct connection string (NOT recommended - use connection_string_env instead)"
+    )
     file_path: str | None = Field(None, description="File path for CSV/Excel sources")
     enabled: bool = Field(True, description="Whether the datasource is enabled")
     description: str = Field("", description="Optional description")
@@ -87,9 +95,24 @@ async def configure_datasource(request: ConfigureDatasourceRequest) -> ToolRespo
     Add or update a datasource configuration.
 
     This tool allows you to configure connections to databases or file sources.
+    
+    For security, use connection_string_env to reference an environment variable
+    instead of passing the connection string directly.
     """
+    import os
+    
     try:
         service = get_datasource_service()
+
+        # Resolve connection string from environment variable if provided
+        connection_string = request.connection_string
+        if request.connection_string_env:
+            connection_string = os.environ.get(request.connection_string_env)
+            if not connection_string:
+                raise ValueError(
+                    f"Environment variable '{request.connection_string_env}' not found. "
+                    "Please set it in your .env file or environment."
+                )
 
         # Check if updating existing
         existing = service.get_datasource(request.id)
@@ -100,16 +123,21 @@ async def configure_datasource(request: ConfigureDatasourceRequest) -> ToolRespo
             id=request.id,
             name=request.name,
             ds_type=request.type,
-            connection_string=request.connection_string,
+            connection_string=connection_string,
             file_path=request.file_path,
             enabled=request.enabled,
             description=request.description,
         )
 
+        # Don't expose connection string in response
+        response_data = datasource.to_dict()
+        if "connection_string" in response_data:
+            response_data["connection_string"] = "***hidden***"
+
         return ToolResponse(
             success=True,
             message=f"Datasource '{request.name}' configured successfully",
-            data=datasource.to_dict(),
+            data=response_data,
         )
 
     except Exception as e:
