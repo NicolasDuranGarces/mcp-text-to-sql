@@ -13,6 +13,8 @@ services:
     container_name: mcp-text-to-sql
     ports:
       - "${PORT:-8000}:8000"
+    env_file:
+      - .env
     environment:
       - HOST=${HOST:-0.0.0.0}
       - PORT=${PORT:-8000}

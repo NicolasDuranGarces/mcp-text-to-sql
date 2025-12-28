@@ -96,22 +96,34 @@ class QueryResult:
         """Generate a human-readable response using the template and actual data."""
         template = template or self.natural_response_template
         if not template:
-            template = "Encontré {count} registro(s)."
+            template = "Se encontraron {count} resultado(s)."
+
+        # Determine the count value
+        # If result is a single row with a single numeric value (aggregation like COUNT), use that value
+        count_value = len(self.data)
+        if len(self.data) == 1 and len(self.data[0]) == 1:
+            value = list(self.data[0].values())[0]
+            if isinstance(value, (int, float)):
+                count_value = value
 
         # Format sample data as readable text
         sample_text = ""
         if self.data:
-            sample_rows = self.data[:5]  # First 5 rows
-            formatted_rows = []
-            for i, row in enumerate(sample_rows, 1):
-                row_str = ", ".join(f"{k}: {v}" for k, v in row.items())
-                formatted_rows.append(f"  {i}. {row_str}")
-            sample_text = "\n".join(formatted_rows)
-            if len(self.data) > 5:
-                sample_text += f"\n  ... y {len(self.data) - 5} más"
+            # If it's a scalar value, don't show it as a sample list
+            if len(self.data) == 1 and len(self.data[0]) == 1:
+               pass
+            else:
+                sample_rows = self.data[:5]  # First 5 rows
+                formatted_rows = []
+                for i, row in enumerate(sample_rows, 1):
+                    row_str = ", ".join(f"{k}: {v}" for k, v in row.items())
+                    formatted_rows.append(f"  {i}. {row_str}")
+                sample_text = "\n".join(formatted_rows)
+                if len(self.data) > 5:
+                    sample_text += f"\n  ... y {len(self.data) - 5} más"
 
         # Replace placeholders
-        response = template.replace("{count}", str(len(self.data)))
+        response = template.replace("{count}", str(count_value))
         response = response.replace("{sample}", sample_text)
 
         self.natural_response = response
